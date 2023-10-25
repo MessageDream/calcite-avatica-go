@@ -120,7 +120,14 @@ func (r *rows) Next(dest []driver.Value) error {
 		for _, row := range frame.Rows {
 			var rowData []*message.TypedValue
 
-			for _, col := range row.Value {
+			for idx, col := range row.Value {
+				if col.ScalarValue == nil && col.HasArrayValue {
+					tv := &message.TypedValue{}
+					tv.ArrayValue = col.ArrayValue
+					tv.Type = resultSet.columns[idx].Rep
+					rowData = append(rowData, tv)
+					continue
+				}
 				rowData = append(rowData, col.ScalarValue)
 			}
 
@@ -166,7 +173,14 @@ func newRows(conn *conn, statementID uint32, closeStatement bool, resultSets []*
 		for _, row := range frame.Rows {
 			var rowData []*message.TypedValue
 
-			for _, col := range row.Value {
+			for idx, col := range row.Value {
+				if col.ScalarValue == nil && col.HasArrayValue {
+					tv := &message.TypedValue{}
+					tv.ArrayValue = col.ArrayValue
+					tv.Type = columns[idx].Rep
+					rowData = append(rowData, tv)
+					continue
+				}
 				rowData = append(rowData, col.ScalarValue)
 			}
 
@@ -256,6 +270,12 @@ func typedValueToNative(rep message.Rep, v *message.TypedValue, config *Config) 
 		t := time.Unix(0, v.NumberValue*int64(time.Millisecond)).In(time.UTC)
 		return forceTimezone(t, config.location)
 
+	case message.Rep_ARRAY:
+		var av []interface{}
+		for _, val := range v.ArrayValue {
+			av = append(av, typedValueToNative(val.Type, val, config))
+		}
+		return av
 	default:
 		return nil
 	}
